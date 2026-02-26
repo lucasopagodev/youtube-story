@@ -4,8 +4,26 @@ import {
   fetchVideoDataWithApiKey,
   fetchVideoDataWithNoembed,
 } from "@/lib/youtube";
+import { rateLimit, getClientIp } from "@/lib/rate-limit";
+
+// 10 requests per minute per IP
+const LIMIT = 10;
+const WINDOW_MS = 60_000;
 
 export async function GET(request: NextRequest) {
+  const ip = getClientIp(request);
+  const rl = rateLimit(`youtube:${ip}`, LIMIT, WINDOW_MS);
+
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: `Muitas requisições. Tente novamente em ${rl.retryAfter}s.` },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfter) },
+      }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const url = searchParams.get("url");
 

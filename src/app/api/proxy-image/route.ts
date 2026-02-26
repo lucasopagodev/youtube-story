@@ -1,8 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
+import { rateLimit, getClientIp } from "@/lib/rate-limit";
+
+// 30 requests per minute per IP (up to ~10 exports, each uses 2-3 images)
+const LIMIT = 30;
+const WINDOW_MS = 60_000;
 
 // Proxies external images (YouTube thumbnails, channel avatars) to avoid
 // CORS restrictions that would taint the canvas used by html-to-image.
 export async function GET(request: NextRequest) {
+  const ip = getClientIp(request);
+  const rl = rateLimit(`proxy-image:${ip}`, LIMIT, WINDOW_MS);
+
+  if (!rl.allowed) {
+    return new NextResponse(
+      `Too many requests. Retry in ${rl.retryAfter}s.`,
+      {
+        status: 429,
+        headers: { "Retry-After": String(rl.retryAfter) },
+      }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const url = searchParams.get("url");
 
