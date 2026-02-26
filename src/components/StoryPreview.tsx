@@ -7,6 +7,8 @@ interface StoryPreviewProps extends StoryConfig {
   fullResolution?: boolean;
   /** When true, images are served via /api/proxy-image to avoid CORS issues on export */
   useProxy?: boolean;
+  /** Show or hide the gradient accent line at the top (default: true) */
+  showAccentLine?: boolean;
   onReady?: () => void;
 }
 
@@ -28,6 +30,7 @@ const StoryPreview = forwardRef<HTMLDivElement, StoryPreviewProps>(
       accentColor,
       fullResolution = false,
       useProxy = false,
+      showAccentLine = true,
       onReady,
     },
     ref
@@ -77,14 +80,16 @@ const StoryPreview = forwardRef<HTMLDivElement, StoryPreviewProps>(
         }}
       >
         {/* Accent line top */}
-        <div
-          style={{
-            height: px(8),
-            background: `linear-gradient(90deg, ${accentColor}, transparent)`,
-            width: "60%",
-            flexShrink: 0,
-          }}
-        />
+        {showAccentLine && (
+          <div
+            style={{
+              height: px(8),
+              background: `linear-gradient(90deg, ${accentColor}, transparent)`,
+              width: "60%",
+              flexShrink: 0,
+            }}
+          />
+        )}
 
         {/* Custom message */}
         <div

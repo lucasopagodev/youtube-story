@@ -10,8 +10,12 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Story Generator",
+  title: "YouTube Story",
   description: "Gere imagens otimizadas para Stories do Instagram a partir de vídeos do YouTube",
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

@@ -14,6 +14,13 @@ interface StoryControlsProps {
   hasVideo: boolean;
   exporting: boolean;
   accentColorValue: string;
+  showAccentLine: boolean;
+  onAccentLineToggle: () => void;
+}
+
+/** Transforms a YouTube URL into an "open" link by inserting "open" after https:// */
+function makeOpenLink(url: string): string {
+  return url.replace(/^https?:\/\/(www\.)?/, "https://open");
 }
 
 export default function StoryControls({
@@ -26,10 +33,13 @@ export default function StoryControls({
   hasVideo,
   exporting,
   accentColorValue,
+  showAccentLine,
+  onAccentLineToggle,
 }: StoryControlsProps) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const handleFetch = useCallback(async () => {
     const trimmed = url.trim();
@@ -52,6 +62,25 @@ export default function StoryControls({
       setLoading(false);
     }
   }, [url, onVideoFetched]);
+
+  const handleCopyLink = useCallback(async () => {
+    const openLink = makeOpenLink(url.trim());
+    try {
+      await navigator.clipboard.writeText(openLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for browsers without clipboard API
+      const ta = document.createElement("textarea");
+      ta.value = openLink;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }, [url]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleFetch();
@@ -94,6 +123,34 @@ export default function StoryControls({
         {error && (
           <p className="text-red-400 text-xs mt-2 leading-relaxed">{error}</p>
         )}
+
+        {/* Copy open link — shown after a URL is entered and video fetched */}
+        {hasVideo && url.trim() && (
+          <button
+            onClick={handleCopyLink}
+            className="mt-3 w-full flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-800 hover:border-neutral-600 rounded-xl px-4 py-2.5 text-xs text-neutral-400 hover:text-white transition-all font-sans"
+          >
+            {copied ? (
+              <>
+                <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5 text-green-400">
+                  <path d="M20 6L9 17l-5-5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <span className="text-green-400">Link copiado!</span>
+              </>
+            ) : (
+              <>
+                <svg viewBox="0 0 24 24" fill="none" className="w-3.5 h-3.5">
+                  <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Copiar link para compartilhar
+                <span className="text-neutral-600 truncate max-w-[120px]">
+                  ({makeOpenLink(url.trim()).replace("https://", "")})
+                </span>
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Custom message */}
@@ -112,6 +169,28 @@ export default function StoryControls({
 
       {/* Color picker */}
       <ColorPicker value={accentColor} onChange={onColorChange} />
+
+      {/* Accent line toggle */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-neutral-500 uppercase tracking-widest">
+          Linha de destaque
+        </span>
+        <button
+          role="switch"
+          aria-checked={showAccentLine}
+          onClick={onAccentLineToggle}
+          className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          style={{ background: showAccentLine ? "#fff" : "#333" }}
+        >
+          <span
+            className="inline-block h-3.5 w-3.5 transform rounded-full transition-transform"
+            style={{
+              background: showAccentLine ? "#000" : "#888",
+              transform: showAccentLine ? "translateX(18px)" : "translateX(3px)",
+            }}
+          />
+        </button>
+      </div>
 
       {/* Export button */}
       {hasVideo && (
