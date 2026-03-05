@@ -42,12 +42,14 @@ export default function Generator() {
         aria-hidden
         style={{
           position: "fixed",
-          top: "-9999px",
-          left: "-9999px",
+          top: 0,
+          left: 0,
           width: "1080px",
           height: "1920px",
+          opacity: 0,
           pointerEvents: "none",
           zIndex: -1,
+          overflow: "hidden",
         }}
       >
         <StoryPreview

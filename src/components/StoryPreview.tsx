@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useState } from "react";
+import { forwardRef, memo, useEffect, useState } from "react";
 import type { StoryConfig } from "@/types";
 
 interface StoryPreviewProps extends StoryConfig {
@@ -222,4 +222,4 @@ const StoryPreview = forwardRef<HTMLDivElement, StoryPreviewProps>(
   }
 );
 
-export default StoryPreview;
+export default memo(StoryPreview);
