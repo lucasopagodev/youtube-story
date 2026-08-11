@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  extractVideoId,
   fetchVideoDataWithApiKey,
   fetchVideoDataWithNoembed,
+  parseYouTubeUrl,
 } from "@/lib/youtube";
 import { rateLimit, getClientIp } from "@/lib/rate-limit";
 
@@ -12,7 +12,14 @@ const WINDOW_MS = 60_000;
 
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request);
-  const rl = rateLimit(`youtube:${ip}`, LIMIT, WINDOW_MS);
+  const rl = await rateLimit(`youtube:${ip}`, LIMIT, WINDOW_MS);
+
+  if (rl.error) {
+    return NextResponse.json(
+      { error: "Serviço temporariamente indisponível." },
+      { status: 503 }
+    );
+  }
 
   if (!rl.allowed) {
     return NextResponse.json(
@@ -31,35 +38,35 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "URL é obrigatória" }, { status: 400 });
   }
 
-  const videoId = extractVideoId(url);
-  if (!videoId) {
+  const parsed = parseYouTubeUrl(url);
+  if (!parsed) {
     return NextResponse.json(
       { error: "URL do YouTube inválida. Formatos aceitos: youtube.com/watch?v=, youtu.be/, youtube.com/shorts/" },
       { status: 400 }
     );
   }
 
+  const { videoId, canonicalUrl } = parsed;
   const apiKey = process.env.YOUTUBE_API_KEY?.trim();
-
-  console.log(`[youtube] videoId=${videoId} apiKey=${apiKey ? "set ✓" : "not set — using noembed fallback"}`);
 
   try {
     if (apiKey) {
       const data = await fetchVideoDataWithApiKey(videoId, apiKey);
-      console.log(`[youtube] channelAvatar=${data.channelAvatar ?? "null (not returned by API)"}`);
       return NextResponse.json(data);
     } else {
-      const data = await fetchVideoDataWithNoembed(url, videoId);
+      const data = await fetchVideoDataWithNoembed(canonicalUrl, videoId);
       return NextResponse.json(data);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido";
-    console.error("[youtube] error:", message);
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[youtube] error:", message);
+    }
 
     // Try fallback if API key failed
     if (apiKey) {
       try {
-        const data = await fetchVideoDataWithNoembed(url, videoId);
+        const data = await fetchVideoDataWithNoembed(canonicalUrl, videoId);
         return NextResponse.json(data);
       } catch {
         // Both failed
@@ -67,7 +74,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: `Não foi possível buscar os dados do vídeo: ${message}` },
+      { error: "Não foi possível buscar os dados do vídeo." },
       { status: 500 }
     );
   }

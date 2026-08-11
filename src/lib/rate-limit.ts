@@ -27,6 +27,8 @@ export interface RateLimitResult {
   remaining: number;
   /** Seconds until the window resets (only set when blocked) */
   retryAfter: number;
+  /** True when production rate limiting is not configured or unavailable */
+  error?: boolean;
 }
 
 /**
@@ -34,7 +36,7 @@ export interface RateLimitResult {
  * @param limit    Max requests allowed per window
  * @param windowMs Window duration in milliseconds
  */
-export function rateLimit(
+function rateLimitInMemory(
   key: string,
   limit: number,
   windowMs: number
@@ -60,11 +62,82 @@ export function rateLimit(
   return { allowed: true, remaining: limit - entry.count, retryAfter: 0 };
 }
 
+async function rateLimitWithUpstash(
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<RateLimitResult> {
+  const restUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  if (!restUrl || !token) {
+    if (process.env.NODE_ENV === "production") {
+      return { allowed: false, remaining: 0, retryAfter: 0, error: true };
+    }
+
+    return rateLimitInMemory(key, limit, windowMs);
+  }
+
+  const response = await fetch(`${restUrl.replace(/\/$/, "")}/pipeline`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify([
+      ["INCR", key],
+      ["PEXPIRE", key, windowMs, "NX"],
+      ["PTTL", key],
+    ]),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error("Rate limit backend unavailable");
+  }
+
+  const [incrementResult, , ttlResult] = (await response.json()) as Array<{
+    result?: number;
+  }>;
+  const count = Number(incrementResult?.result ?? limit + 1);
+  const ttl = Number(ttlResult?.result ?? windowMs);
+  const retryAfter = Math.max(1, Math.ceil(ttl / 1000));
+
+  if (count > limit) {
+    return { allowed: false, remaining: 0, retryAfter };
+  }
+
+  return {
+    allowed: true,
+    remaining: Math.max(0, limit - count),
+    retryAfter: 0,
+  };
+}
+
+export async function rateLimit(
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<RateLimitResult> {
+  try {
+    return await rateLimitWithUpstash(key, limit, windowMs);
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[rate-limit] unavailable:", error);
+      return rateLimitInMemory(key, limit, windowMs);
+    }
+
+    return { allowed: false, remaining: 0, retryAfter: 0, error: true };
+  }
+}
+
 /** Extracts the real client IP from a Next.js request */
 export function getClientIp(request: Request): string {
-  return (
+  const ip = (
     request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
     request.headers.get("x-real-ip") ||
     "unknown"
   );
+
+  return ip.replace(/[^a-fA-F0-9:.,\s-]/g, "").slice(0, 64) || "unknown";
 }

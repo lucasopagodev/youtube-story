@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import StoryControls from "@/components/StoryControls";
 import StoryPreview from "@/components/StoryPreview";
+import { isMobileDevice } from "@/lib/export";
 import type { VideoInfo } from "@/types";
 
 const DEFAULT_MESSAGE = "Saiu vídeo novo no canal!";
@@ -15,15 +16,25 @@ export default function Generator() {
   const [accentColor, setAccentColor] = useState(DEFAULT_COLOR);
   const [showAccentLine, setShowAccentLine] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [imageReadyToSave, setImageReadyToSave] = useState<string | null>(null);
 
   const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsMobile(isMobileDevice());
+  }, []);
 
   const handleExport = useCallback(async () => {
     if (!videoInfo || !exportRef.current) return;
     setExporting(true);
+    setImageReadyToSave(null);
     try {
       const { exportStoryAsPng } = await import("@/lib/export");
-      await exportStoryAsPng(exportRef.current);
+      const result = await exportStoryAsPng(exportRef.current);
+      if (result.action === "ready-to-save") {
+        setImageReadyToSave(result.dataUrl);
+      }
     } catch (err) {
       console.error("Export failed:", err);
       alert("Erro ao exportar a imagem. Tente novamente.");
@@ -93,7 +104,25 @@ export default function Generator() {
             accentColorValue={accentColor}
             showAccentLine={showAccentLine}
             onAccentLineToggle={() => setShowAccentLine((v) => !v)}
+            exportLabel={isMobile ? "Compartilhar imagem" : "Baixar Story em PNG"}
           />
+
+          {imageReadyToSave && (
+            <div className="mt-4 rounded-xl border border-neutral-700 bg-neutral-900 p-4">
+              <p className="text-sm font-medium text-white">Imagem pronta para salvar</p>
+              <p className="mt-1 text-xs leading-relaxed text-neutral-400">
+                Abra a imagem e use o menu Compartilhar do seu celular para salvá-la na galeria ou enviá-la para outro app.
+              </p>
+              <a
+                href={imageReadyToSave}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 flex w-full items-center justify-center rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-black transition-opacity hover:opacity-80"
+              >
+                Abrir imagem
+              </a>
+            </div>
+          )}
 
           {videoInfo && (
             <div className="mt-6 p-4 rounded-xl bg-neutral-900 border border-neutral-800">

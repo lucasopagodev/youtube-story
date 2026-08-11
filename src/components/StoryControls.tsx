@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import ColorPicker from "./ColorPicker";
-import type { VideoInfo } from "@/types";
+import type { VideoInfo, YouTubeApiResponse } from "@/types";
 
 interface StoryControlsProps {
   onVideoFetched: (info: VideoInfo) => void;
@@ -16,11 +16,11 @@ interface StoryControlsProps {
   accentColorValue: string;
   showAccentLine: boolean;
   onAccentLineToggle: () => void;
+  exportLabel: string;
 }
 
-/** Transforms a YouTube URL into an "open" link by inserting "open" after https:// */
-function makeOpenLink(url: string): string {
-  return url.replace(/^https?:\/\/(www\.)?/, "https://open");
+function makeOpenLink(videoId: string): string {
+  return `https://openyoutube.com/watch?v=${videoId}`;
 }
 
 export default function StoryControls({
@@ -35,11 +35,13 @@ export default function StoryControls({
   accentColorValue,
   showAccentLine,
   onAccentLineToggle,
+  exportLabel,
 }: StoryControlsProps) {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
 
   const handleFetch = useCallback(async () => {
     const trimmed = url.trim();
@@ -50,12 +52,13 @@ export default function StoryControls({
       const res = await fetch(
         `/api/youtube?url=${encodeURIComponent(trimmed)}`
       );
-      const data = await res.json();
+      const data = (await res.json()) as YouTubeApiResponse;
       if (!res.ok || data.error) {
         setError(data.error || "Erro ao buscar vídeo.");
         return;
       }
       onVideoFetched(data);
+      setShareUrl(makeOpenLink(data.videoId));
     } catch {
       setError("Erro de rede. Verifique sua conexão.");
     } finally {
@@ -64,15 +67,15 @@ export default function StoryControls({
   }, [url, onVideoFetched]);
 
   const handleCopyLink = useCallback(async () => {
-    const openLink = makeOpenLink(url.trim());
+    if (!shareUrl) return;
     try {
-      await navigator.clipboard.writeText(openLink);
+      await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // Fallback for browsers without clipboard API
       const ta = document.createElement("textarea");
-      ta.value = openLink;
+      ta.value = shareUrl;
       document.body.appendChild(ta);
       ta.select();
       document.execCommand("copy");
@@ -80,7 +83,7 @@ export default function StoryControls({
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  }, [url]);
+  }, [shareUrl]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleFetch();
@@ -97,7 +100,11 @@ export default function StoryControls({
           <input
             type="text"
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              setShareUrl("");
+              setCopied(false);
+            }}
             onKeyDown={handleKeyDown}
             placeholder="https://youtube.com/watch?v=..."
             className="flex-1 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-3 text-sm text-white placeholder-neutral-600 outline-none focus:border-neutral-600 transition-colors font-sans"
@@ -125,7 +132,7 @@ export default function StoryControls({
         )}
 
         {/* Copy open link — shown after a URL is entered and video fetched */}
-        {hasVideo && url.trim() && (
+        {hasVideo && shareUrl && (
           <button
             onClick={handleCopyLink}
             className="mt-3 w-full flex items-center justify-center gap-2 bg-neutral-900 border border-neutral-800 hover:border-neutral-600 rounded-xl px-4 py-2.5 text-xs text-neutral-400 hover:text-white transition-all font-sans"
@@ -145,7 +152,7 @@ export default function StoryControls({
                 </svg>
                 Copiar link para compartilhar
                 <span className="text-neutral-600 truncate max-w-[120px]">
-                  ({makeOpenLink(url.trim()).replace("https://", "")})
+                  ({shareUrl.replace("https://", "")})
                 </span>
               </>
             )}
@@ -212,7 +219,7 @@ export default function StoryControls({
               Exportando...
             </span>
           ) : (
-            "Baixar Story (1080×1920)"
+            exportLabel
           )}
         </button>
       )}

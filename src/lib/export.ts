@@ -28,8 +28,32 @@ async function fetchAsDataUrl(src: string): Promise<string> {
   });
 }
 
+export type StoryExportResult =
+  | { action: "shared" | "downloaded" | "cancelled" }
+  | { action: "ready-to-save"; dataUrl: string };
+
+const FILE_NAME = "instagram-story.png";
+
+/** Identifies phones and tablets, including iPads that report themselves as Macs. */
+export function isMobileDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+
+  return (
+    /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function pngDataUrlToFile(dataUrl: string): File {
+  const [, base64] = dataUrl.split(",");
+  const bytes = Uint8Array.from(atob(base64), (character) =>
+    character.charCodeAt(0)
+  );
+  return new File([bytes], FILE_NAME, { type: "image/png" });
+}
+
 /**
- * Captures a DOM element as a 1080×1920 PNG and triggers download.
+ * Captures a DOM element as a 1080×1920 PNG.
  *
  * Two Safari/iOS fixes:
  *  1. Pre-inline all images as base64 data URLs before calling toPng — Safari's
@@ -37,7 +61,9 @@ async function fetchAsDataUrl(src: string): Promise<string> {
  *  2. Call toPng twice — the first call warms up Safari's SVG/foreignObject
  *     rendering pipeline (often returns blank); the second call captures correctly.
  */
-export async function exportStoryAsPng(element: HTMLElement): Promise<void> {
+export async function exportStoryAsPng(
+  element: HTMLElement
+): Promise<StoryExportResult> {
   const { toPng } = await import("html-to-image");
 
   // 1. Wait for proxy URL images to finish loading
@@ -83,8 +109,39 @@ export async function exportStoryAsPng(element: HTMLElement): Promise<void> {
   // 6. Actual capture
   const dataUrl = await toPng(element, opts);
 
+  if (isMobileDevice()) {
+    const image = pngDataUrlToFile(dataUrl);
+    const shareData = {
+      files: [image],
+      title: "Story para Instagram",
+    };
+
+    if (
+      typeof navigator.share === "function" &&
+      (typeof navigator.canShare !== "function" || navigator.canShare(shareData))
+    ) {
+      try {
+        await navigator.share(shareData);
+        return { action: "shared" };
+      } catch (error) {
+        // The person deliberately closed the native share sheet.
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return { action: "cancelled" };
+        }
+      }
+    }
+
+    // Some Safari versions do not allow sharing a generated file after an
+    // asynchronous render. The UI can then offer a user-initiated link that
+    // opens the PNG, from where iOS and Android expose their save/share tools.
+    return { action: "ready-to-save", dataUrl };
+  }
+
   const link = document.createElement("a");
-  link.download = "instagram-story.png";
+  link.download = FILE_NAME;
   link.href = dataUrl;
+  document.body.appendChild(link);
   link.click();
+  link.remove();
+  return { action: "downloaded" };
 }
