@@ -27,7 +27,7 @@ export interface RateLimitResult {
   remaining: number;
   /** Seconds until the window resets (only set when blocked) */
   retryAfter: number;
-  /** True when production rate limiting is not configured or unavailable */
+  /** True only when no safe rate-limit strategy is available */
   error?: boolean;
 }
 
@@ -71,10 +71,8 @@ async function rateLimitWithUpstash(
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
   if (!restUrl || !token) {
-    if (process.env.NODE_ENV === "production") {
-      return { allowed: false, remaining: 0, retryAfter: 0, error: true };
-    }
-
+    // A shared Redis store is optional. On deployments without it, keep the
+    // endpoint available with a best-effort per-instance limit.
     return rateLimitInMemory(key, limit, windowMs);
   }
 
@@ -124,10 +122,11 @@ export async function rateLimit(
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
       console.error("[rate-limit] unavailable:", error);
-      return rateLimitInMemory(key, limit, windowMs);
     }
 
-    return { allowed: false, remaining: 0, retryAfter: 0, error: true };
+    // Do not take the YouTube lookup offline when the optional shared limiter
+    // has a transient failure. The local fallback still protects each instance.
+    return rateLimitInMemory(key, limit, windowMs);
   }
 }
 
