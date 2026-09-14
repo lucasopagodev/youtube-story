@@ -19,8 +19,12 @@ interface StoryControlsProps {
   exportLabel: string;
 }
 
-function makeOpenLink(videoId: string): string {
-  return `https://openyoutube.com/watch?v=${videoId}`;
+function makeOpenLink(videoUrl: string): string {
+  return videoUrl.replace(
+    /^https:\/\/(www\.)?/,
+    (_match, hasWww: string | undefined) =>
+      hasWww ? "https://www.open" : "https://open"
+  );
 }
 
 export default function StoryControls({
@@ -58,7 +62,7 @@ export default function StoryControls({
         return;
       }
       onVideoFetched(data);
-      setShareUrl(makeOpenLink(data.videoId));
+      setShareUrl(makeOpenLink(trimmed));
     } catch {
       setError("Erro de rede. Verifique sua conexão.");
     } finally {
